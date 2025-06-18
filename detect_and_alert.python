@@ -1,0 +1,50 @@
+import torch
+import cv2
+from twilio.rest import Client
+
+# Twilio credentials (replace with yours)
+account_sid = 'your_account_sid'
+auth_token = 'your_auth_token'
+twilio_number = '+1xxxxxxxxxx'
+target_number = '+91xxxxxxxxxx'
+client = Client(account_sid, auth_token)
+
+# Load YOLOv5 pre-trained model
+model = torch.hub.load('ultralytics/yolov5', 'yolov5s')  # lightweight model
+model.conf = 0.5  # confidence threshold
+
+# Open video file (or change to 0 for webcam)
+cap = cv2.VideoCapture('wildlife_video.mp4')
+
+alerted = False  # To prevent multiple alerts per detection
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    results = model(frame)
+    labels = results.xyxyn[0][:, -1].numpy()
+    classes = [model.names[int(i)] for i in labels]
+
+    # Check for target species
+    for label in classes:
+        if label in ['elephant', 'bear', 'zebra']:
+            print(f"Detected: {label}")
+            if not alerted:
+                message = client.messages.create(
+                    body=f"⚠️ Wildlife Alert: {label.upper()} detected in the camera zone.",
+                    from_=twilio_number,
+                    to=target_number
+                )
+                print("SMS sent:", message.sid)
+                alerted = True
+
+    # Show video output
+    annotated_frame = results.render()[0]
+    cv2.imshow("Wildlife Detection", annotated_frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
